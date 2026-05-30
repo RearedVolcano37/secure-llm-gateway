@@ -1,0 +1,58 @@
+name: CI
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check app/ tests/
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  docker:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t llm-gateway:ci .
+
+      - name: Verify image starts healthy
+        run: |
+          docker run -d --name gw-test \
+            -e GATEWAY_API_KEYS=ci-test-key \
+            -e LLM_API_KEY=placeholder \
+            -p 8000:8000 llm-gateway:ci
+          sleep 8
+          curl -sf http://localhost:8000/health || (docker logs gw-test && exit 1)
+          docker stop gw-test
