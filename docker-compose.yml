@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  gateway:
+    build: .
+    container_name: llm-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      # ── Auth ─────────────────────────────────────────────────────────────
+      # Comma-separated list of valid API keys (dev only — use keys.json in prod)
+      GATEWAY_API_KEYS: "sk-dev-changeme"
+
+      # ── Upstream LLM ─────────────────────────────────────────────────────
+      LLM_BASE_URL: "https://api.openai.com/v1"
+      LLM_API_KEY:  "${OPENAI_API_KEY}"       # passed in from host env
+
+    volumes:
+      - ./logs:/app/logs                      # persist audit logs on host
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ── Optional: add Redis for distributed rate limiting ─────────────────────────
+#  redis:
+#    image: redis:7-alpine
+#    container_name: llm-gateway-redis
+#    ports:
+#      - "6379:6379"
+#    restart: unless-stopped
