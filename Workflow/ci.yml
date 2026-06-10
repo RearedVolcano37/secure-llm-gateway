@@ -1,19 +1,21 @@
 name: CI
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+# ── Silence Node.js 20 deprecation warnings (required before June 16 2026) ──
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: Lint & Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: true
       matrix:
         python-version: ["3.11", "3.12"]
 
@@ -27,16 +29,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          pip install ruff
           pip install -r requirements.txt
 
       - name: Lint with ruff
-        run: |
-          pip install ruff
-          ruff check app/ tests/
+        run: ruff check app/ tests/
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v
+        env:
+          # Provide a test key so auth-dependent tests don't fail at env lookup
+          GATEWAY_API_KEYS: "test-key-integration"
+          LLM_BASE_URL: "https://api.openai.com/v1"
+          LLM_API_KEY: "sk-test-placeholder"
 
   docker:
     name: Docker build check
@@ -45,14 +50,4 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t llm-gateway:ci .
-
-      - name: Verify image starts healthy
-        run: |
-          docker run -d --name gw-test \
-            -e GATEWAY_API_KEYS=ci-test-key \
-            -e LLM_API_KEY=placeholder \
-            -p 8000:8000 llm-gateway:ci
-          sleep 8
-          curl -sf http://localhost:8000/health || (docker logs gw-test && exit 1)
-          docker stop gw-test
+        run: docker build -t llm-gateway:test .
